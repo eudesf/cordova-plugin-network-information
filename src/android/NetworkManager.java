@@ -35,6 +35,9 @@ import android.content.IntentFilter;
 import android.net.ConnectivityManager;
 import android.net.NetworkInfo;
 
+import android.telephony.PhoneStateListener;
+import android.telephony.TelephonyManager;
+
 import java.util.Locale;
 
 public class NetworkManager extends CordovaPlugin {
@@ -64,11 +67,11 @@ public class NetworkManager extends CordovaPlugin {
     public static final String HSDPA = "hsdpa";
     public static final String ONEXRTT = "1xrtt";
     public static final String EHRPD = "ehrpd";
+    public static final String HSPA_PLUS = "hspa+";
     // 4G network types
     public static final String FOUR_G = "4g";
     public static final String LTE = "lte";
     public static final String UMB = "umb";
-    public static final String HSPA_PLUS = "hspa+";
     // return type
     public static final String TYPE_UNKNOWN = "unknown";
     public static final String TYPE_ETHERNET = "ethernet";
@@ -86,6 +89,10 @@ public class NetworkManager extends CordovaPlugin {
     ConnectivityManager sockMan;
     BroadcastReceiver receiver;
     private JSONObject lastInfo = null;
+    
+    private java.util.Timer networkCheckTimer;
+    private volatile long lastNetworkCheck;
+    private static final long NETWORK_CHECK_TIMER_PERIOD = 5000;
 
     /**
      * Sets the context of the Command. This can then be used to do things like
@@ -109,11 +116,36 @@ public class NetworkManager extends CordovaPlugin {
                     // (The null check is for the ARM Emulator, please use Intel Emulator for better results)
                     if(NetworkManager.this.webView != null)
                         updateConnectionInfo(sockMan.getActiveNetworkInfo());
+                    lastNetworkCheck = System.currentTimeMillis();
                 }
             };
             webView.getContext().registerReceiver(this.receiver, intentFilter);
         }
+        
+        TelephonyManager telephonyMan = (TelephonyManager) cordova.getActivity().getSystemService(Context.TELEPHONY_SERVICE);
+        telephonyMan.listen(new PhoneStateListener() {
+        	@Override
+        	public void onDataConnectionStateChanged(int state, int networkType) {
+        		super.onDataConnectionStateChanged(state, networkType);
+        		NetworkInfo info = sockMan.getActiveNetworkInfo();
+        		LOG.d(LOG_TAG, "onDataConnectionStateChanged:" + state + ":"+ networkType + " type [" + getType(info) + "]");
+        		updateConnectionInfo(info);
+        		lastNetworkCheck = System.currentTimeMillis();
+        	}
+        	
+        }, PhoneStateListener.LISTEN_DATA_CONNECTION_STATE);
 
+        networkCheckTimer = new java.util.Timer();
+        networkCheckTimer.schedule(new java.util.TimerTask() {
+        	public void run() {
+	        	if (System.currentTimeMillis() - lastNetworkCheck >= NETWORK_CHECK_TIMER_PERIOD) {
+	        		NetworkInfo info = NetworkManager.this.sockMan.getActiveNetworkInfo();
+	        		LOG.d(LOG_TAG, "onCheckTimer: type [" + NetworkManager.this.getType(info) + "]");
+	        		NetworkManager.this.updateConnectionInfo(info);
+	        	}
+	        	NetworkManager.this.lastNetworkCheck = System.currentTimeMillis();
+        	}
+        }, NETWORK_CHECK_TIMER_PERIOD, NETWORK_CHECK_TIMER_PERIOD);
     }
 
     /**
@@ -147,6 +179,7 @@ public class NetworkManager extends CordovaPlugin {
      * Stop network receiver.
      */
     public void onDestroy() {
+    	networkCheckTimer.cancel();
         if (this.receiver != null) {
             try {
                 webView.getContext().unregisterReceiver(this.receiver);
@@ -255,6 +288,7 @@ public class NetworkManager extends CordovaPlugin {
             }
             else if (type.equals(MOBILE) || type.equals(CELLULAR)) {
                 type = info.getSubtypeName().toLowerCase(Locale.US);
+				LOG.d(LOG_TAG, "networkType : " + type);
                 if (type.equals(GSM) ||
                         type.equals(GPRS) ||
                         type.equals(EDGE) ||
@@ -268,12 +302,12 @@ public class NetworkManager extends CordovaPlugin {
                         type.equals(HSUPA) ||
                         type.equals(HSDPA) ||
                         type.equals(HSPA) ||
+                        type.equals(HSPA_PLUS) ||
                         type.equals(THREE_G)) {
                     return TYPE_3G;
                 }
                 else if (type.equals(LTE) ||
                         type.equals(UMB) ||
-                        type.equals(HSPA_PLUS) ||
                         type.equals(FOUR_G)) {
                     return TYPE_4G;
                 }

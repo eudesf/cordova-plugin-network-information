@@ -24,11 +24,13 @@
 @interface CDVConnection : CDVPlugin {
     NSString* type;
     NSString* _callbackId;
+    NSTimer* checkTimer;
 
     CDVReachability* internetReach;
 }
 
 @property (copy) NSString* connectionType;
 @property (strong) CDVReachability* internetReach;
+@property (strong) NSTimer* checkTimer;
 
 @end

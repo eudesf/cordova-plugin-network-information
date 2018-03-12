@@ -28,7 +28,7 @@
 
 @implementation CDVConnection
 
-@synthesize connectionType, internetReach;
+@synthesize connectionType, internetReach, checkTimer;
 
 - (void)getConnectionInfo:(CDVInvokedUrlCommand*)command
 {
@@ -135,11 +135,18 @@
 - (void)onPause
 {
     [self.internetReach stopNotifier];
+    [self.checkTimer invalidate];
 }
 
 - (void)onResume
 {
     [self.internetReach startNotifier];
+    [self updateReachability:self.internetReach];
+    self.checkTimer = [NSTimer scheduledTimerWithTimeInterval:5 target:(self) selector:@selector(checkTimerRun) userInfo:nil repeats:YES];
+}
+
+- (void)checkTimerRun
+{
     [self updateReachability:self.internetReach];
 }
 
